@@ -1,4 +1,5 @@
 package org.example;
+import com.mongodb.MongoClientException;
 import com.mongodb.client.*;
 import org.bson.Document;
 
@@ -19,7 +20,8 @@ public class Main {
     private static int listIndex = 0;
     public static void main(String[] args) {
         try {
-            readAccountsFromFile();
+            //readAccountsFromFile();
+            getAccountsFromMongoDB();
             String choice;
             do {
                 System.out.println("Choose an option (a)Add Account (l)Display all Accounts (s)Save to File " +
@@ -56,6 +58,7 @@ public class Main {
                 }
             } while(!choice.toUpperCase().equals("Q"));
             writeAccountsToFile();
+            saveAccountsToMongoDB();
             sc.close();
         }
         catch(Exception ex){
@@ -176,37 +179,51 @@ public class Main {
     }
 
     private static void saveAccountsToMongoDB(){
-        MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017");
-        MongoDatabase database = mongoClient.getDatabase("test");
-        database.getCollection("accounts").drop();
-        MongoCollection<Document> bankaccounts = database.getCollection("accounts");
-        for(int i = 0; i < accounts.size(); i++){
-            Document acDoc = new Document();
-            acDoc.put("_id",i+1);
-            acDoc.put("account",accounts.get(i).getAccount());
-            acDoc.put("balance",accounts.get(i).getBalance());
-            if(accounts.get(i) instanceof SavingsAccount){
-                acDoc.put("actype","savings");
+        try {
+            MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017");
+            MongoDatabase database = mongoClient.getDatabase("test");
+            database.getCollection("accounts").drop();
+            MongoCollection<Document> bankaccounts = database.getCollection("accounts");
+            for (int i = 0; i < accounts.size(); i++) {
+                Document acDoc = new Document();
+                acDoc.put("_id", i + 1);
+                acDoc.put("account", accounts.get(i).getAccount());
+                acDoc.put("balance", accounts.get(i).getBalance());
+                if (accounts.get(i) instanceof SavingsAccount) {
+                    acDoc.put("actype", "savings");
+                } else {
+                    acDoc.put("actype", "current");
+                }
+                bankaccounts.insertOne(acDoc);
             }
-            else{
-                acDoc.put("actype","current");
-            }
-            bankaccounts.insertOne(acDoc);
+            mongoClient.close();
         }
-        mongoClient.close();
+        catch(MongoClientException ex){
+            System.out.println("Database Exception " + ex.getMessage());
+        }
     }
 
     private static void getAccountsFromMongoDB(){
-        MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017");
-        MongoDatabase database = mongoClient.getDatabase("test");
-        MongoCollection<Document> bankaccounts = database.getCollection("accounts");
-        MongoCursor<Document> cursor = bankaccounts.find().iterator();
-        while(cursor.hasNext()){
-            Document account = cursor.next();
-            var items = new ArrayList<>(account.values());
-            System.out.printf("Account is a %s %s account and has balance %.2f\n",items.get(1),items.get(3),items.get(2));
+        try {
+            MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017");
+            MongoDatabase database = mongoClient.getDatabase("test");
+            MongoCollection<Document> bankaccounts = database.getCollection("accounts");
+            MongoCursor<Document> cursor = bankaccounts.find().iterator();
+            while (cursor.hasNext()) {
+                Document account = cursor.next();
+                var items = new ArrayList<>(account.values());
+                //System.out.printf("Account is a %s %s account and has balance %.2f\n",items.get(1),items.get(3),items.get(2));
+                if (items.get(3).equals("savings")) {
+                    accounts.add(new SavingsAccount((String) items.get(1), (double) items.get(2)));
+                } else {
+                    accounts.add(new BankAccount((String) items.get(1), (double) items.get(2)));
+                }
+            }
+            mongoClient.close();
         }
-        mongoClient.close();
+        catch(MongoClientException ex){
+            System.out.println("Database Exception " + ex.getMessage());
+        }
     }
 
 
