@@ -1,16 +1,11 @@
 package org.example;
 import com.mongodb.MongoClientException;
 import com.mongodb.client.*;
+import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.LogManager;
 import org.bson.Document;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.sql.SQLOutput;
 import java.util.*;
-import java.util.logging.FileHandler;
-import java.util.logging.Handler;
 import java.util.logging.Logger;
 
 public class Main {
@@ -20,11 +15,13 @@ public class Main {
     private static int listIndex = 0;
     public static void main(String[] args) {
         try {
-            //readAccountsFromFile();
+            //This for MongoDB logging
+            Logger logger = Logger.getLogger("Main.class");
+            BasicConfigurator.configure();
             getAccountsFromMongoDB();
             String choice;
             do {
-                System.out.println("Choose an option (a)Add Account (l)Display all Accounts (s)Save to File " +
+                System.out.println("Choose an option (a)Add Account (l)Display all Accounts " +
                         "(w)Withdraw funds (d)Deposit funds (m)Save to MongoDB (r)Read from MongoDB (q)Quit");
                 choice = sc.nextLine().toUpperCase();
                 switch (choice) {
@@ -37,9 +34,6 @@ public class Main {
                     case "L":
                         System.out.println("***** All Bank Accounts *****");
                         displayAllAccounts();
-                        break;
-                    case "S":
-                        writeAccountsToFile();
                         break;
                     case "W":
                         withdrawFunds();
@@ -57,7 +51,6 @@ public class Main {
                         System.out.println("Not a valid option");
                 }
             } while(!choice.toUpperCase().equals("Q"));
-            writeAccountsToFile();
             saveAccountsToMongoDB();
             sc.close();
         }
@@ -66,19 +59,20 @@ public class Main {
         }
     }
 
+
     private static void withdrawFunds() {
         try {
             displayAllAccounts();
             System.out.println("Enter the number of your account:");
             int index = Integer.parseInt(sc.nextLine());
-            getAccountFromArray(index);
+            getAccountFromList(index);
             System.out.println("How much would you like to withdraw:");
             double amount = Double.parseDouble(sc.nextLine());
             accounts.get(listIndex).withdraw(amount);
-            getAccountFromArray(index);
+            getAccountFromList(index);
         }
         catch(NumberFormatException ex){
-            System.out.println("You must enter a number for the account");
+            System.out.println("You must enter a number for the account or for the withdrawal amount");
         }
         catch(IndexOutOfBoundsException ex){
             System.out.println("You entered an invalid account number");
@@ -90,14 +84,14 @@ public class Main {
             displayAllAccounts();
             System.out.println("Enter the number of your account:");
             int index = Integer.parseInt(sc.nextLine());
-            getAccountFromArray(index);
+            getAccountFromList(index);
             System.out.println("How much would you like to deposit:");
             double amount = Double.parseDouble(sc.nextLine());
             accounts.get(listIndex).deposit(amount);
-            getAccountFromArray(index);
+            getAccountFromList(index);
         }
         catch(NumberFormatException ex){
-            System.out.println("You must enter a number for the account");
+            System.out.println("You must enter a number for the account or the deposit amount");
         }
         catch(IndexOutOfBoundsException ex){
             System.out.println("You entered an invalid account number");
@@ -161,23 +155,6 @@ public class Main {
         }
     }
 
-    private static void writeAccountsToFile(){
-        try{
-            FileWriter fileWriter = new FileWriter("C:/data/accounts.csv");
-            for(int i = 0; i < accounts.size();i++){
-                fileWriter.write(String.format("%s,%.2f",accounts.get(i).getAccount(),accounts.get(i).getBalance()));
-                if(accounts.get(i) instanceof SavingsAccount){
-                    fileWriter.write(",saver");
-                }
-                fileWriter.write("\n");
-            }
-            fileWriter.close();
-        }
-        catch(IOException ex){
-            System.out.println("IO Exception " + ex.getMessage());
-        }
-    }
-
     private static void saveAccountsToMongoDB(){
         try {
             MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017");
@@ -208,15 +185,13 @@ public class Main {
             MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017");
             MongoDatabase database = mongoClient.getDatabase("test");
             MongoCollection<Document> bankaccounts = database.getCollection("accounts");
-            MongoCursor<Document> cursor = bankaccounts.find().iterator();
-            while (cursor.hasNext()) {
-                Document account = cursor.next();
-                var items = new ArrayList<>(account.values());
-                //System.out.printf("Account is a %s %s account and has balance %.2f\n",items.get(1),items.get(3),items.get(2));
-                if (items.get(3).equals("savings")) {
-                    accounts.add(new SavingsAccount((String) items.get(1), (double) items.get(2)));
-                } else {
-                    accounts.add(new BankAccount((String) items.get(1), (double) items.get(2)));
+            FindIterable<Document> cursor = bankaccounts.find();
+            for(Document account : cursor){
+                if(account.getString("actype").equals("savings")){
+                    accounts.add(new SavingsAccount( account.getString("account"), account.getDouble("balance")));
+                }
+                else{
+                    accounts.add(new BankAccount( account.getString("account"), account.getDouble("balance")));
                 }
             }
             mongoClient.close();
@@ -226,32 +201,7 @@ public class Main {
         }
     }
 
-
-
-    private static void readAccountsFromFile(){
-        try{
-            File accountsFile = new File("C:/data/accounts.csv");
-            if(accountsFile.exists()){
-                Scanner sc = new Scanner(accountsFile);
-                while(sc.hasNextLine()){
-                    String line = sc.nextLine();
-                    String[] lineArray = line.split(",");
-                    if(lineArray.length == 3){
-                        accounts.add(new SavingsAccount(lineArray[0],Double.parseDouble(lineArray[1])));
-                    }
-                    else{
-                        accounts.add(new BankAccount(lineArray[0],Double.parseDouble(lineArray[1])));
-                    }
-                }
-                sc.close();
-            }
-        }
-        catch(IOException ex){
-            System.out.println("");
-        }
-    }
-
-    private static void getAccountFromArray(int index){
+    private static void getAccountFromList(int index){
         try {
             System.out.println("***** Your current details are ***** ");
             System.out.printf("%s has balance %.2f\n", accounts.get(index - 1).getAccount(), accounts.get(index - 1).getBalance());
